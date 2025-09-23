@@ -24,6 +24,18 @@ const fileToPart = async (file: File): Promise<{ inlineData: { mimeType: string;
     return { inlineData: { mimeType, data } };
 };
 
+// Helper function to convert a data URL string to a Gemini API Part
+const dataUrlToPart = (dataUrl: string): { inlineData: { mimeType: string; data: string; } } => {
+    const arr = dataUrl.split(',');
+    if (arr.length < 2) throw new Error("Invalid data URL");
+    const mimeMatch = arr[0].match(/:(.*?);/);
+    if (!mimeMatch || !mimeMatch[1]) throw new Error("Could not parse MIME type from data URL");
+    
+    const mimeType = mimeMatch[1];
+    const data = arr[1];
+    return { inlineData: { mimeType, data } };
+};
+
 const handleApiResponse = (
     response: GenerateContentResponse,
     context: string // e.g., "edit", "filter", "adjustment"
@@ -207,4 +219,104 @@ Output: Return ONLY the final edited image with the transparent background. Do n
     console.log('Received response from model for background removal.', response);
     
     return handleApiResponse(response, 'background removal');
+};
+
+// --- VIRTUAL TRY-ON ---
+
+/**
+ * Generates a full-body fashion model from a user-provided photo.
+ * @param userPhoto The original photo file uploaded by the user.
+ * @returns A promise that resolves to the data URL of the generated model image.
+ */
+export const generateModelImage = async (userPhoto: File): Promise<string> => {
+    console.log('Generating fashion model...');
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
+
+    const userPhotoPart = await fileToPart(userPhoto);
+    const prompt = `You are a professional fashion photographer AI. Your task is to transform the person in this photo into a full-body fashion model.
+
+Key Instructions:
+- **Preserve Identity**: The person's face, body type, and unique features must be perfectly preserved.
+- **Pose**: The model should be in a standard, neutral, full-body standing pose, facing the camera.
+- **Expression**: Give the model a professional, neutral facial expression suitable for a fashion shoot.
+- **Background**: Replace the original background with a clean, neutral, light-gray studio background.
+- **Attire**: The model must be wearing the exact same clothes as in the original photo. Do not change or alter the outfit in any way.
+- **Output**: The final image should be a high-resolution, photorealistic shot.
+
+Output only the final image. Do not return text.`;
+
+    const textPart = { text: prompt };
+
+    const response: GenerateContentResponse = await ai.models.generateContent({
+        model: 'gemini-2.5-flash-image-preview',
+        contents: { parts: [userPhotoPart, textPart] },
+    });
+
+    console.log('Received response from model for model generation.', response);
+    return handleApiResponse(response, 'model generation');
+};
+
+
+/**
+ * Applies a garment to a model image for virtual try-on.
+ * @param currentModelImage The current image of the model (as a data URL).
+ * @param garmentImage The image of the garment to apply (as a data URL).
+ * @returns A promise that resolves to the data URL of the model wearing the new garment.
+ */
+export const generateVirtualTryOnImage = async (currentModelImage: string, garmentImage: string): Promise<string> => {
+    console.log('Applying garment to model...');
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
+
+    const modelImagePart = dataUrlToPart(currentModelImage);
+    const garmentImagePart = dataUrlToPart(garmentImage);
+    
+    const prompt = `You are an expert virtual stylist AI. Your task is to realistically fit the provided garment onto the model in the base image.
+
+Key Instructions:
+- **Perfect Fit**: The garment must be realistically rendered onto the model, accounting for their body shape, pose, and lighting. It should look natural, with proper draping, wrinkles, and shadows.
+- **Complete Replacement**: Completely replace any existing clothing on the model with the new garment.
+- **Preserve Everything Else**: The model's body, face, pose, and the background must remain absolutely identical to the base image. Do not change anything except the clothing.
+
+Output only the final image of the model wearing the garment. Do not return text.`;
+
+    const textPart = { text: prompt };
+    
+    const response: GenerateContentResponse = await ai.models.generateContent({
+        model: 'gemini-2.5-flash-image-preview',
+        contents: { parts: [modelImagePart, garmentImagePart, textPart] },
+    });
+    
+    console.log('Received response from model for virtual try-on.', response);
+    return handleApiResponse(response, 'virtual try-on');
+};
+
+/**
+ * Regenerates the model's current outfit from a different pose.
+ * @param currentTryOnImage The current image of the model wearing clothes (as a data URL).
+ * @param newPoseInstruction A text description of the desired new pose.
+ * @returns A promise that resolves to the data URL of the model in the new pose.
+ */
+export const generatePoseVariation = async (currentTryOnImage: string, newPoseInstruction: string): Promise<string> => {
+    console.log(`Changing pose to: ${newPoseInstruction}...`);
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
+    
+    const tryOnImagePart = dataUrlToPart(currentTryOnImage);
+    const prompt = `You are an expert AI fashion photographer. Your task is to re-render the person and their complete outfit from a new perspective.
+
+New Pose Request: "${newPoseInstruction}"
+
+Key Instructions:
+- **Change Only the Pose**: The person's identity, their entire outfit (all clothing and accessories), and the studio background style must remain identical.
+- **Realistic Transition**: The new pose should be photorealistic and consistent with the previous image.
+
+Output only the final image of the model in the new pose. Do not return text.`;
+    const textPart = { text: prompt };
+
+    const response: GenerateContentResponse = await ai.models.generateContent({
+        model: 'gemini-2.5-flash-image-preview',
+        contents: { parts: [tryOnImagePart, textPart] },
+    });
+    
+    console.log('Received response from model for pose variation.', response);
+    return handleApiResponse(response, 'pose variation');
 };

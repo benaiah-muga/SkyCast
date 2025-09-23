@@ -1,6 +1,6 @@
 {
   "name": "SkyCast",
-  "description": "A powerful, AI photo editor. Retouch, apply creative filters, and make professional adjustments to your images using simple text prompts.",
+  "description": "An AI-powered suite for creative image editing and virtual fashion try-on. Retouch photos with text prompts or create a personal model to try on any outfit.",
   "requestFramePermissions": [],
   "prompt": ""
 }
